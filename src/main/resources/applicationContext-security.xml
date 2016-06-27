@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:security="http://www.springframework.org/schema/security"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans-3.2.xsd
+	   http://www.springframework.org/schema/security http://www.springframework.org/schema/security/spring-security-3.2.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context-3.0.xsd
+       http://www.springframework.org/schema/tx
+       http://www.springframework.org/schema/tx/spring-tx-2.0.xsd">
+
+    <tx:annotation-driven/>
+    <context:component-scan base-package="com.tekenable.tdsec2" />
+    <!--<beans:import resource="../webapp/WEB-INF/mvc-dispatcher-servlet.xml" />-->
+
+    <security:http use-expressions="true" create-session="stateless" entry-point-ref="restAuthenticationEntryPoint">
+        <security:custom-filter ref="basicAuthenticationFilter" position="BASIC_AUTH_FILTER" />
+        <security:custom-filter ref="tdAuthCookieFilter" before="ANONYMOUS_FILTER"/>
+        <security:intercept-url pattern="/signin/**" access="permitAll" />
+        <security:intercept-url pattern="/loginForm/**" access="permitAll" />
+        <security:intercept-url pattern="/img/**" access="permitAll" />
+        <security:intercept-url pattern="/css/**" access="permitAll" />
+        <security:intercept-url pattern="/js/**" access="permitAll" />
+        <security:intercept-url pattern="/**" access="hasRole('ROLE_USER')" />
+
+    </security:http>
+
+    <bean id="tdAuthCookieFilter" class="com.tekenable.tdsec2.auth.TdAuthCookieFromDbFilter"
+          p:authService-ref="tdAuthService"/>
+
+    <bean id="tdAuthService" class="com.tekenable.tdsec2.service.TdAuthService"
+          p:tdLoginDao-ref="tdLoginDaoImpl"
+          p:tdUserDao-ref="tdUserDaoImpl"
+          p:clock-ref="clock"
+          />
+
+    <bean id="clock" class="com.tekenable.tdsec2.utils.Clock"/>
+
+    <!--This will redirect by default to the signin which will be the login controller-->
+    <bean id="restAuthenticationEntryPoint"
+                class="com.tekenable.tdsec2.auth.RestAuthenticationEntryPoint">
+        <property name="realmName" value="test.com" />
+    </bean>
+
+
+    <bean id="basicAuthenticationFilter"
+          class="org.springframework.security.web.authentication.www.BasicAuthenticationFilter">
+        <constructor-arg ref="authenticationManager"/>
+        <constructor-arg ref="restAuthenticationEntryPoint"/>
+
+    </bean>
+
+    <!-- It is responsible for validating the user's credentials -->
+    <!-- Configures in-memory implementation of the UserDetailsService implementation -->
+    <security:authentication-manager alias="authenticationManager">
+        <security:authentication-provider>
+            <security:user-service>
+                <security:user name="user" password="password" authorities="ROLE_USER"/>
+            </security:user-service>
+        </security:authentication-provider>
+    </security:authentication-manager>
+
+    <bean id="cryptographyFactory" class="com.firecrestclinical.commons.security.CryptographyFactory"
+          p:config-ref="encryptedStorageProperties"/>
+
+    <bean id="encryptedStorageProperties"
+          class="org.springframework.beans.factory.config.PropertiesFactoryBean"
+          p:fileEncoding="UTF-8">
+        <property name="locations">
+            <list>
+                <value>classpath*:encryptedStorage.properties</value>
+            </list>
+        </property>
+    </bean>
+
+    <bean class="org.springframework.security.crypto.password.StandardPasswordEncoder"
+            id="passwordEncoder" />
+
+
+    <bean id="userDetailsService" class="com.tekenable.tdsec2.auth.CustomUserDetailsService" />
+
+    <bean id="tdLoginDaoImpl" class="com.tekenable.tdsec2.infrastructure.dao.TdLoginDaoImpl" />
+    <bean id="tdUserDaoImpl" class="com.tekenable.tdsec2.infrastructure.dao.TdUserDaoImpl" />
+
+
+    <bean id="myDataSource" class="org.apache.commons.dbcp.BasicDataSource" destroy-method="close">
+        <property name="driverClassName" value="com.mysql.jdbc.Driver"/>
+        <property name="url" value="jdbc:mysql://localhost:3306/trialdirect_sec"/>
+        <property name="username" value="root"/>
+        <property name="password" value="root"/>
+    </bean>
+
+
+    <bean id="myEntityManagerFactory" class="org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean">
+        <property name="dataSource" ref="myDataSource"/>
+        <property name="jpaVendorAdapter" ref="jpaVendorAdapter"/>
+        <property name="persistenceUnitName" value="myPersistenceUnit"/>
+        <property name="jpaProperties">
+            <props>
+                <prop key="hibernate.show_sql">true</prop>
+                <prop key="hibernate.hbm2dll.auto">create</prop>
+            </props>
+        </property>
+    </bean>
+
+    <bean id="jpaVendorAdapter" class="org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter">
+        <property name="showSql" value="true"/>
+        <property name="generateDdl" value="true"/>
+        <property name="databasePlatform" value="org.hibernate.dialect.MySQL5Dialect"/>
+    </bean>
+
+    <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+    <!--  Transaction Manager bean  -->
+    <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+    <bean id="transactionManager" class="org.springframework.orm.hibernate3.HibernateTransactionManager">
+        <property name="sessionFactory" ref="sessionFactory" />
+    </bean>
+
+
+    <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+    <!--  enable the configuration of transactional behavior based on annotations  -->
+    <!-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -->
+    <tx:annotation-driven transaction-manager="transactionManager" />
+
+
+
+    <bean id="sessionFactory" class="org.springframework.orm.hibernate3.annotation.AnnotationSessionFactoryBean">
+        <property name="dataSource" ref="myDataSource"/>
+        <property name="packagesToScan">
+            <list>
+                <value>com.tekenable.tdsec2.model</value>
+            </list>
+        </property>
+        <property name="hibernateProperties">
+            <value>
+                hibernate.dialect=org.hibernate.dialect.MySQL5Dialect
+            </value>
+        </property>
+    </bean>
+
+    <bean id="sharedConfigProperties"
+          class="org.springframework.beans.factory.config.PropertiesFactoryBean"
+          p:fileEncoding="UTF-8">
+        <property name="locations">
+            <list>
+                <value>classpath*:shared-config.properties</value>
+            </list>
+        </property>
+    </bean>
+
+</beans>
